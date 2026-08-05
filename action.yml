@@ -1,0 +1,85 @@
+name: "Enterprise Skills Release Governor"
+description: >-
+  Deterministic, evidence-bound PASS/FAIL on every pull request. Installs the
+  Enterprise Skills CLI, runs the optional headless evidence phase, and posts
+  the decision that completes the enterprise-skills/release-governor check.
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  license-key:
+    description: >-
+      Enterprise Skills license key (store as a repository secret). The action
+      PLANTS the key file — it never runs `license activate`, because device
+      seats are for workstations and an ephemeral runner would burn one per run.
+    required: true
+  anthropic-api-key:
+    description: >-
+      Optional. Funds the headless evidence phase (semantic domain agents).
+      Without it the evidence phase is skipped with a visible notice and the
+      Governor decides over whatever evidence is committed — which, in enforce
+      mode, is an honest FAIL on evidence-requiring diffs, not a bug. Consider
+      mode: warn in .project-ai/GOVERNOR_POLICY.yaml while unfunded.
+    required: false
+    default: ""
+  evidence:
+    description: >-
+      Evidence phase: "agents" (PR-scale semantic agents — minutes),
+      "release-readiness" (the full orchestrated workflow — up to 90 minutes),
+      or "none".
+    required: false
+    default: "agents"
+  cli-version:
+    description: "enterprise-skills npm version or range."
+    required: false
+    default: "^4.12.0"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Enterprise Skills CLI
+      shell: bash
+      run: npm install -g "enterprise-skills@${{ inputs.cli-version }}"
+
+    - name: Provide license (planted, never device-activated)
+      shell: bash
+      env:
+        ES_LICENSE_KEY: ${{ inputs.license-key }}
+      run: |
+        mkdir -p ~/.enterprise-skills
+        node -e "require('fs').writeFileSync(require('os').homedir()+'/.enterprise-skills/license.json', JSON.stringify({ key: process.env.ES_LICENSE_KEY }))"
+
+    - name: Evidence phase (semantic agents)
+      if: ${{ inputs.anthropic-api-key != '' && inputs.evidence == 'agents' }}
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        npm install -g @anthropic-ai/claude-code
+        enterprise-skills agents run --yes --base "origin/$BASE_REF" --agent-cmd "claude -p \"{prompt}\" --permission-mode acceptEdits"
+
+    - name: Evidence phase (full release-readiness workflow)
+      if: ${{ inputs.anthropic-api-key != '' && inputs.evidence == 'release-readiness' }}
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        npm install -g @anthropic-ai/claude-code
+        enterprise-skills orchestrate workflow run release-readiness --yes \
+          --agent-cmd "claude -p \"{prompt}\" --permission-mode acceptEdits" \
+          --step-timeout 1800
+
+    - name: Evidence phase skipped (unfunded)
+      if: ${{ inputs.anthropic-api-key == '' && inputs.evidence != 'none' }}
+      shell: bash
+      run: |
+        echo "::notice title=Evidence phase skipped::No anthropic-api-key input was provided, so no headless evidence was produced. The Governor decides over committed evidence only. On evidence-requiring diffs in enforce mode that is an honest FAIL — the policy working, not a bug. Fund the evidence phase, commit session evidence, or set mode: warn in .project-ai/GOVERNOR_POLICY.yaml while adopting."
+
+    - name: Govern and post the decision (completes the PR check run)
+      shell: bash
+      env:
+        PR_NUMBER: ${{ github.event.number }}
+        BASE_REF: ${{ github.base_ref }}
+      run: enterprise-skills govern --post --pr "$PR_NUMBER" --base "origin/$BASE_REF"
