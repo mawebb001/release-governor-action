@@ -10,9 +10,13 @@ branding:
 inputs:
   license-key:
     description: >-
-      Enterprise Skills license key (store as a repository secret). The action
-      PLANTS the key file — it never runs `license activate`, because device
-      seats are for workstations and an ephemeral runner would burn one per run.
+      Enterprise Skills license key (store as a repository secret — mint a
+      dedicated CI service key with `enterprise-skills license mint-ci` rather
+      than reusing a workstation key). Rides as ES_LICENSE_KEY env on every
+      CLI step: cli >=4.14 resolves the key env-first, so nothing touches disk
+      and no device seat is ever consumed. When cli-version pins a release
+      below 4.14, the action falls back to planting the keys-only
+      ~/.enterprise-skills/license.json those versions read.
     required: true
   anthropic-api-key:
     description: >-
@@ -33,7 +37,7 @@ inputs:
   cli-version:
     description: "enterprise-skills npm version or range."
     required: false
-    default: "^4.12.0"
+    default: "^4.14.0"
 
 runs:
   using: "composite"
@@ -42,18 +46,34 @@ runs:
       shell: bash
       run: npm install -g "enterprise-skills@${{ inputs.cli-version }}"
 
-    - name: Provide license (planted, never device-activated)
+    # cli >=4.14 resolves ES_LICENSE_KEY env-first on every posting path
+    # (govern --post, deploy record/gate, journey run), so the license rides
+    # as env on the steps below and nothing touches disk. Older releases read
+    # only ~/.enterprise-skills/license.json, so a pinned cli-version below
+    # 4.14 still gets the keys-only file planted (planted, never
+    # device-activated — device seats are for workstations and an ephemeral
+    # runner would burn one per run). The check reads the INSTALLED version,
+    # not the range: "^4.12.0" resolves to >=4.14 today and needs no file.
+    - name: License compatibility (plant the file only for cli < 4.14)
       shell: bash
       env:
         ES_LICENSE_KEY: ${{ inputs.license-key }}
       run: |
-        mkdir -p ~/.enterprise-skills
-        node -e "require('fs').writeFileSync(require('os').homedir()+'/.enterprise-skills/license.json', JSON.stringify({ key: process.env.ES_LICENSE_KEY }))"
+        v="$(enterprise-skills --version | tr -d '[:space:]')"
+        major="${v%%.*}"; rest="${v#*.}"; minor="${rest%%.*}"
+        if [ "$major" -lt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -lt 14 ]; }; then
+          mkdir -p ~/.enterprise-skills
+          node -e "require('fs').writeFileSync(require('os').homedir()+'/.enterprise-skills/license.json', JSON.stringify({ key: process.env.ES_LICENSE_KEY }))"
+          echo "cli $v predates env-first ES_LICENSE_KEY (4.14.0): planted the keys-only license file it reads."
+        else
+          echo "cli $v resolves ES_LICENSE_KEY from the environment: no license file written."
+        fi
 
     - name: Evidence phase (semantic agents)
       if: ${{ inputs.anthropic-api-key != '' && inputs.evidence == 'agents' }}
       shell: bash
       env:
+        ES_LICENSE_KEY: ${{ inputs.license-key }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
         BASE_REF: ${{ github.base_ref }}
       run: |
@@ -64,6 +84,7 @@ runs:
       if: ${{ inputs.anthropic-api-key != '' && inputs.evidence == 'release-readiness' }}
       shell: bash
       env:
+        ES_LICENSE_KEY: ${{ inputs.license-key }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
       run: |
         npm install -g @anthropic-ai/claude-code
@@ -80,6 +101,7 @@ runs:
     - name: Govern and post the decision (completes the PR check run)
       shell: bash
       env:
+        ES_LICENSE_KEY: ${{ inputs.license-key }}
         PR_NUMBER: ${{ github.event.number }}
         BASE_REF: ${{ github.base_ref }}
       run: enterprise-skills govern --post --pr "$PR_NUMBER" --base "origin/$BASE_REF"

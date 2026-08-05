@@ -34,10 +34,10 @@ jobs:
 
 | Input | Required | Default | What it does |
 |---|---|---|---|
-| `license-key` | yes | — | Your Enterprise Skills license key, from a repo secret. **Planted, never device-activated** — device seats are for workstations; an ephemeral runner would burn one per run. |
+| `license-key` | yes | — | Your Enterprise Skills license key, from a repo secret. Rides as **`ES_LICENSE_KEY` env** on every CLI step — never device-activated, and with cli ≥ 4.14 never written to disk. Mint a dedicated CI service key with `enterprise-skills license mint-ci` instead of reusing a workstation key. |
 | `anthropic-api-key` | no | `""` | Funds the headless evidence phase. Absent = the phase is skipped with a visible notice. |
 | `evidence` | no | `agents` | `agents` (PR-scale semantic agents, minutes) · `release-readiness` (full workflow, up to 90 min) · `none`. |
-| `cli-version` | no | `^4.12.0` | The `enterprise-skills` npm version/range to run. |
+| `cli-version` | no | `^4.14.0` | The `enterprise-skills` npm version/range to run. |
 
 ## Three things that will bite you if you skip them
 
@@ -58,8 +58,24 @@ jobs:
 
 ## What this action does, exactly
 
-install CLI → plant the license file → *(optionally)* run the headless
-evidence phase → `govern --post`, which classifies the diff, evaluates the
-committed evidence against versioned policy, prints the decision, and posts it
-— completing the required check with a countersigned, independently verifiable
-record. Setup and full docs: <https://enterpriseskills.ai/release-gates>.
+install CLI → hand it the license as `ES_LICENSE_KEY` env → *(optionally)* run
+the headless evidence phase → `govern --post`, which classifies the diff,
+evaluates the committed evidence against versioned policy, prints the
+decision, and posts it — completing the required check with a countersigned,
+independently verifiable record. Setup and full docs:
+<https://enterpriseskills.ai/release-gates>.
+
+## Backward compatibility: pinning a CLI older than 4.14
+
+Since `enterprise-skills` 4.14.0 the CLI resolves `ES_LICENSE_KEY` env-first
+on every posting path (`govern --post`, `deploy record`/`gate`,
+`journey run`), so this action passes the license as env and — on cli ≥ 4.14
+— writes nothing to disk. Older releases read only a planted
+`~/.enterprise-skills/license.json`.
+
+If your `cli-version` pins below 4.14 (an exact `4.13.0`, a `~4.12.0` range),
+nothing breaks: the action checks the **installed** version at run time and
+plants the keys-only license file just for those CLIs. Ranges like `^4.12.0`
+resolve to ≥ 4.14 today and get the env-only path automatically. Either way
+the key is never device-activated — device seats are for workstations, and an
+ephemeral runner would burn one per run.
