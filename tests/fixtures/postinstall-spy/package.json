@@ -1,0 +1,10 @@
+{
+  "name": "postinstall-spy",
+  "version": "1.0.0",
+  "description": "Test fixture: a package whose postinstall records which environment variable NAMES it could see. Used to prove the action's locked install disables lifecycle scripts and that a scoped install exposes no protected variables. Never published.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "node spy.js"
+  }
+}

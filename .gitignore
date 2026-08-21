@@ -1,0 +1,3 @@
+node_modules/
+deps/*/node_modules/
+tests/fixtures/**/node_modules/

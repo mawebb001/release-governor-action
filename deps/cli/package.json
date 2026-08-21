@@ -1,0 +1,10 @@
+{
+  "name": "release-governor-action-cli-deps",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Integrity-locked install of the verified Enterprise Skills CLI. Exact pin; changed only by a reviewed commit to this action, never by an input.",
+  "license": "MIT",
+  "dependencies": {
+    "enterprise-skills": "4.30.2"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "release-governor-action-agent-deps",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Integrity-locked install of the semantic-agent runtime (Claude Code CLI). Exact pin; installed only when the trust gate allows AI evidence.",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.238"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "locked-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Test fixture: consumes postinstall-spy from a local tarball through a committed lockfile, so the locked-install behaviour can be proven offline.",
+  "license": "MIT",
+  "dependencies": {
+    "postinstall-spy": "file:../postinstall-spy-1.0.0.tgz"
+  }
+}
