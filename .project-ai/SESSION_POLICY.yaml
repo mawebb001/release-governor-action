@@ -1,0 +1,21 @@
+generated: '2026-08-21T05:55:23.900Z'
+policy: enterprise
+
+on_session_start:
+  - read_project_state: required
+  - read_governance: required
+  - git_status_check: required
+  - load_authority_pack: required
+
+on_session_end:
+  - update_project_state: required
+  - create_checkpoint: required
+  - update_decision_log: required
+
+on_task_start:
+  - preflight_resolve: required
+  - skill_registry_check: required
+  - task_classification: required
+
+checkpoint_frequency: every_task
+authoritative_doc_loading: required

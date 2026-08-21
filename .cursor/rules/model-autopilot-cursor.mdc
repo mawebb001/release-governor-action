@@ -1,0 +1,99 @@
+---
+description: Cursor-specific Model Autopilot picker map (auto-generated; pairs with model-autopilot.mdc)
+alwaysApply: false
+---
+
+## Model Autopilot — Cursor
+
+When `.project-ai/MODEL_AUTOPILOT.yaml` has `enabled: true`, follow one step per chat and emit the **STOP — SWITCH MODEL NOW** banner when the step is done. Picker labels below are specific to **Cursor** (`ide: cursor`).
+
+**Picker location:** Top of chat panel — model menu (MAX Mode)
+**Last verified:** 2026-05-19
+
+> **Caveats**
+> - MAX Mode picker varies by Cursor plan (Free vs Pro vs Ultra).
+> - Auto = Cursor router; treated as fast tier — not for implementation steps.
+> - Composer is Cursor-proprietary (fast family).
+
+<details><summary>How auto-detection identified this IDE</summary>
+
+Files: `.cursor/`
+Env: `CURSOR_TRACE_ID`, `CURSOR_AGENT`, `CURSOR`
+
+</details>
+
+### Vendor-agnostic families → pickers in this IDE
+
+| Family | What it's for | Pickers in this IDE |
+|---|---|---|
+| **architecture** | Design, review, security, threat modeling | `Opus 4.7` · `Opus 4.5` · `Premium` |
+| **strategy** | Ambiguous scope, policy, cross-domain reasoning | `GPT-5.5` · `GPT-5.2` |
+| **implementation** | Multi-file code, tests, refactors, bug fixes | `Codex 5.6 Sol` · `Codex 5.3` · `Sonnet 4.6` · `Codex 5.2` |
+| **fast** | Polish, docs, comments, tiny edits | `Composer 2.5` · `Auto` |
+
+### Model verify (every step)
+
+You cannot see the user's picker. Before doing step work, require:
+
+```
+Model check: I am on <exact label from the picker above>
+```
+
+Then verify with:
+
+```bash
+enterprise-skills autopilot verify "Model check: I am on <label>" --ide cursor
+```
+
+Exit code 0 means MATCH. Exit code 1 means NO MATCH — re-prompt the user.
+
+### Switch banner (after step work completes)
+
+```
+══════════════════════════════════════════
+STOP — SWITCH MODEL NOW
+══════════════════════════════════════════
+Finished step: [current step id] — [title]
+Next step:     [next_step_id] — [next step title from yaml]
+IDE:           cursor (Cursor)
+
+1. Open the model picker (Top of chat panel — model menu (MAX Mode)).
+2. Select one of the pickers listed for the next step's family above.
+3. Start a NEW chat.
+4. First message in the new chat:
+
+   Model check: I am on <exact label>
+
+5. Then paste the handoff text from the next step in MODEL_AUTOPILOT.yaml.
+
+Helpful: enterprise-skills autopilot status
+══════════════════════════════════════════
+```
+
+### Environment routing — when to switch to Claude Code
+
+Autopilot picks the model *family* within this IDE. This rule picks the *environment*:
+some tasks run better in Claude Code (autonomous, multi-step) than in an interactive
+IDE session. Check this before starting a task.
+
+| Task signal | Recommended environment |
+|---|---|
+| Autonomous multi-step implementation; spec-to-feature builds | **Claude Code** |
+| Infra / IaC; backend services; cross-file refactors | **Claude Code** |
+| Doc generation; large-repo analysis | **Claude Code** |
+| Editing, UI work, diff review, small fixes, exploration | Stay in Cursor |
+
+If a task matches a Claude Code row, emit this banner and stop (same stop-and-wait
+contract as the model-switch banner):
+
+```
+══════════════════════════════════════════
+SWITCH ENVIRONMENT — USE CLAUDE CODE
+══════════════════════════════════════════
+This task fits Claude Code: <one-line reason from the trigger table>.
+Run it there for autonomous multi-step execution, then return to Cursor
+for review and diffs.
+══════════════════════════════════════════
+```
+
+Run `enterprise-skills autopilot ides --ide cursor` for the latest picker map.

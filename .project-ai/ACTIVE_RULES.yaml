@@ -1,0 +1,28 @@
+generated: '2026-08-21T05:55:23.900Z'
+governance_profile: enterprise
+
+active:
+  - rule_id: authoritative-governance-mandatory
+    reason: always_apply
+  - rule_id: model-governance
+    reason: always_apply
+  - rule_id: project-identity
+    reason: always_apply
+  - rule_id: proactive-skill-coordinator
+    reason: always_apply
+  - rule_id: authority-pack-enforcement
+    reason: always_apply
+  - rule_id: report-accuracy
+    reason: always_apply
+  - rule_id: metadata-evidence
+    reason: always_apply
+  - rule_id: model-autopilot
+    reason: always_apply
+  - rule_id: model-transition-enforcement
+    reason: profile_scope
+  - rule_id: model-conditioning-precedence
+    reason: profile_scope
+  - rule_id: test-first-implementation
+    reason: always_apply
+
+inactive: []

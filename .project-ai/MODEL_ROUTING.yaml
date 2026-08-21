@@ -1,0 +1,10 @@
+generated: '2026-08-21T05:55:23.900Z'
+profile: default
+adapter: codex
+
+mappings:
+  strategy: gpt-5.6-sol
+  architecture: gpt-5.6-sol
+  implementation: gpt-5.6-terra
+
+ambiguity_rule: Default to the strategy model when the task type is unclear

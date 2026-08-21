@@ -1,0 +1,20 @@
+generated: '2026-08-21T05:55:23.900Z'
+governance_profile: enterprise
+enabled: true
+
+trigger_on:
+  - session_start
+  - before_code_changes
+  - before_feature_build
+  - before_schema_change
+  - before_skill_creation
+
+required_checks:
+  - skill_availability
+  - doc_load_order
+  - task_classification
+  - model_routing
+  - new_skill_gate
+
+emit_summary: true
+log_decisions: true

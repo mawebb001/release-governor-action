@@ -1,0 +1,12 @@
+generated: '2026-08-21T05:55:23.900Z'
+source: installed_community_tier
+
+aliases:
+  start-session: session-start
+  end-session: session-end
+  refactor: refactor-agent
+  initialize-project: project-initiator
+  report-feedback: feedback
+  build-feature: feature-builder
+  review-code: code-review
+  hunt-bugs: bug-hunter

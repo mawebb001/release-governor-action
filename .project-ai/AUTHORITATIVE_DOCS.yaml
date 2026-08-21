@@ -1,0 +1,27 @@
+generated: '2026-08-21T05:55:23.900Z'
+
+session_start:
+  - path: .project-ai/PROJECT_PROFILE.yaml
+    required: true
+  - path: .project-ai/ACTIVE_SKILLS.yaml
+    required: true
+  - path: .project-ai/ACTIVE_RULES.yaml
+    required: true
+  - path: .project-ai/MODEL_ROUTING.yaml
+    required: true
+  - path: .project-ai/SESSION_POLICY.yaml
+    required: true
+  - path: .project-ai/AUTHORITATIVE_DOCS.yaml
+    required: true
+  - path: docs/SESSION_CHECKPOINT.md
+    required: true
+  - path: docs/RELEASE_HARDENING.md
+    required: true
+  - path: README.md
+    required: false
+
+before_code_changes:
+  - path: action.yml
+    required: true
+  - path: docs/RELEASE_HARDENING.md
+    required: true

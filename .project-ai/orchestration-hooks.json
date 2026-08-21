@@ -1,0 +1,8 @@
+{
+  "inputGateway": true,
+  "subscriptionTier": "community",
+  "maxPromptChars": 2000,
+  "sessionStartInit": true,
+  "stopSignalActive": false,
+  "agentBrief": true
+}

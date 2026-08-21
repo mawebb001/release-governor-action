@@ -1,0 +1,39 @@
+schema: 1
+
+# Skill trigger bindings (docs/WIRING_PROBES_DESIGN.md §7).
+#
+# A skill that depends on someone remembering a trigger phrase at exactly the
+# right moment is a suggestion. These bindings fire at the moment of risk:
+# when a matching command is about to run, the required skill must already
+# have been satisfied on this branch.
+#
+#   mode: ask    prompt before proceeding (default)
+#   mode: block  refuse until the requirement is satisfied
+#   mode: warn   record and continue
+#
+# `matches` entries are WHOLE-TOKEN sequences, so "terraform apply" fires on
+# `cd infra && terraform apply -auto-approve` but not on a filename that
+# happens to contain it. Prefix with `regex:` for a regular expression.
+#
+# Satisfy a requirement after actually running the skill:
+#   enterprise-skills triggers satisfy pre-deploy-check
+#
+# COMMIT THIS FILE. Do NOT commit the satisfaction record it produces:
+#
+#   echo .project-ai/trigger-state.json >> .gitignore
+#
+# That record says "somebody on this machine ran the skill on this branch".
+# Committed, it travels to every clone of the branch and pre-satisfies the
+# gate for people who never ran anything -- which is the same fail-open as
+# treating a checked-in evidence file as proof, and the reason satisfaction
+# is explicit here at all.
+
+# No infrastructure tooling was detected in this project, so no bindings were
+# seeded. Add one when you gain a deploy path — for example:
+#
+# triggers:
+#   - when: tool_use
+#     matches: ["terraform apply", "kubectl apply"]
+#     require: pre-deploy-check
+#     mode: ask
+triggers: []

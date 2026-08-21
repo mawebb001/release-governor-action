@@ -1,0 +1,51 @@
+# Auto-generated — intent routing for orchestration advisor and IDE agents
+#
+# SCOPE: intent routing covers the 8 skill(s) listed under `skills:` below —
+# this project's ACTIVE set. Any skill NOT listed is still available and is
+# invoked BY NAME ("run <skill-id>"); it is out of scope for automatic
+# intent classification, not out of reach. Re-run `enterprise-skills init`
+# (or `onboard`) after changing ACTIVE_SKILLS.yaml to regenerate this file.
+profile: enterprise
+generated: 2026-08-21T05:53:16.179Z
+routing_scope: active_skills
+routed_skill_count: 8
+unrouted_skills: invoked_by_name
+novice_mode: true
+policy: classify_intent_automatically
+
+intent_defaults:
+  session_start: ["session-start", "governance-enforcement"]
+  session_end: ["session-end"]
+  bugfix: ["bug-hunter", "governance-enforcement"]
+  feature_build: ["feature-builder", "governance-enforcement"]
+  refactor: ["refactor-agent", "governance-enforcement"]
+  review: ["code-review"]
+  security: ["security-audit", "governance-enforcement"]
+  deploy: ["pre-deploy-check", "release-manager"]
+  launchops: ["launchops-agent", "pre-deploy-check"]
+  test: ["test-orchestrator"]
+  audit_all: ["full-stack-audit"]
+  database: ["db-explorer", "db-migration-agent"]
+  docs: ["api-docs-generator", "changelog-generator"]
+  incident: ["incident-response"]
+  general: ["governance-enforcement", "project-manager"]
+  greenfield: ["project-initiator", "project-manager"]
+  midstream: ["project-initiator", "project-manager", "init-project-skills"]
+
+skills:
+  - skill_id: session-start
+    category: lifecycle
+  - skill_id: session-end
+    category: lifecycle
+  - skill_id: refactor-agent
+    category: agentic
+  - skill_id: project-initiator
+    category: lifecycle
+  - skill_id: feedback
+    category: lifecycle
+  - skill_id: feature-builder
+    category: agentic
+  - skill_id: code-review
+    category: audit
+  - skill_id: bug-hunter
+    category: agentic

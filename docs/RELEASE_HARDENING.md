@@ -14,6 +14,7 @@ verifier, never by the implementer).
 | id | finding | classification | branch | implementation commit |
 | --- | --- | --- | --- | --- |
 | RH-20260821-001 | ES-P0-ACTION-CREDENTIAL-SCOPE (Action half) | IMPLEMENTED BUT NOT PROVEN | fix/es-p0-action-credential-boundary | 82cdf1d4621724734d7439937920f718f547ad42 |
+| RH-20260821-002 | Enforcement gate matrix gaps | OPEN — NOT IMPLEMENTED | fix/es-p0-action-credential-boundary | n/a |
 
 ---
 
@@ -335,3 +336,33 @@ pack @anthropic-ai/claude-code@2.1.238` (to read `install.cjs`),
 - Merge, `v1` retag and release notes (deliberately NOT performed).
 - The hub's companion CLI half (4.31.0) remains unpublished and unverified;
   no pin here depends on it.
+
+---
+
+## RH-20260821-002 — Enforcement gate matrix gaps
+
+- **Classification:** OPEN — NOT IMPLEMENTED. This entry records verified
+  governance gaps; it does not claim remediation or release proof.
+- **Observed:** 2026-08-21 UTC during governed session initialization.
+- **Probe:** `enterprise-skills probe run enforcement-gate-matrix --json`.
+- **Evidence scope:** working tree, 49 files scanned. The probe detected Python
+  from `tests/static_checks.py`; no `.project-ai/ENFORCEMENT_EXCLUSIONS.yaml`
+  exists, so every applicable gate was evaluated.
+- **Result:** 0 of 7 applicable gates present; 7 missing.
+- **Binding:** UNBOUND. The working tree contained uncommitted authority-pack
+  and checkpoint changes, so the Release Governor will treat this probe result
+  as stale until the changes are committed and the probe is rerun.
+
+| gate | status | required remediation from probe |
+| --- | --- | --- |
+| Python lint (ruff / flake8) | MISSING | Add ruff (`[tool.ruff]` in `pyproject.toml` or `ruff.toml`) or flake8, and run it in CI. |
+| Python security (Bandit) | MISSING | Add bandit (`[tool.bandit]` in `pyproject.toml` or a `.bandit` file) and run `bandit -r` in CI. |
+| Python static types (mypy) | MISSING | Add mypy (`[tool.mypy]` in `pyproject.toml` or `mypy.ini`) and run it in CI. |
+| Pre-commit hook | MISSING | Install a pre-commit hook (husky, lefthook, or pre-commit) that runs the lint and test gates above. |
+| Dependency audit | MISSING | Run a dependency vulnerability scan in CI (npm/yarn/pnpm audit, bundle-audit, pip-audit, govulncheck, osv-scanner) or enable Dependabot/Renovate. |
+| Environment documentation | MISSING | Generate `.env.example` (run the `env-registry-generator` skill) so every variable the code reads is documented. |
+| Agent security rule | MISSING | Add `.cursor/rules/security-first.mdc` (run `bootstrap AI governance`) so agents carry the security rule into every edit. |
+
+No exclusion was added and no gate was remediated as part of this entry. A
+future hardening entry must cite committed configuration and a verified,
+commit-bound probe before reclassifying any finding as fixed.

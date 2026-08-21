@@ -33,31 +33,32 @@ Recorded as RH-20260821-001 (IMPLEMENTED BUT NOT PROVEN) in
 - Ledger sequence is this repo's own (`RH-20260821-001`); the hub's ledger is cited by id.
 
 ## Current State
-- **Branch**: `fix/es-p0-action-credential-boundary` (HEAD `46c7781`, impl `82cdf1d`), tracking origin, in sync
+- **Branch**: `fix/es-p0-action-credential-boundary` (HEAD `200f177`, impl `82cdf1d`), tracking origin, in sync
 - **Build Status**: n/a (composite action; static validation passes)
 - **Test Status**: passing — `bash tests/run.sh` 412/412; live locked CLI install → 4.30.2
-- **Uncommitted Changes**: none tracked; `.project-ai/` (CLI session receipts/audit) intentionally untracked
+- **Governance State**: enterprise authority pack and Cursor governance artifacts initialized; runtime receipts, orchestration audit, and active session state remain intentionally untracked
 
 ## Known Issues
 - Not yet run end to end on a real GitHub runner or against the live App/API; CI workflow triggers only on PR or push to main.
 - Agent-runtime install path (`install.cjs`, ~500 MB binary) not exercised live; Node ≥22 engine warning on Node-20 runners unverified.
 - No `v4.30.2` git tag in the hub — tarball↔commit binding is by version + ledger.
 - Windows: `compgen -e` omits non-identifier env names; action targets ubuntu-latest.
-- No authority pack (`.project-ai/` pack absent); `context gate` BLOCKs at session start — work proceeded explicitly ungoverned per the task.
 
 ## Next TODO
 
 ### Agent Tasks
-1. Independent clean-room verification of `82cdf1d` (run the suite, then the action from a scratch repo in fork-PR / same-repo-PR / default-branch-push contexts; attempt bypasses: job-level `GITHUB_TOKEN` env, `id-token: write`, `NODE_OPTIONS`, `.npmrc` in the governed repo) — to be done by a verifier, not the implementer; the verifier appends RH-20260821-002.
+1. Independent clean-room verification of `82cdf1d` (run the suite, then the action from a scratch repo in fork-PR / same-repo-PR / default-branch-push contexts; attempt bypasses: job-level `GITHUB_TOKEN` env, `id-token: write`, `NODE_OPTIONS`, `.npmrc` in the governed repo) — to be done by a verifier, not the implementer; the verifier appends RH-20260821-003.
 2. If/when a verified CLI with `child-boundary` is published, bump `deps/cli` lock, add `--pass-env ANTHROPIC_API_KEY` to the evidence step, revisit the same-repo-PR policy against the CLI's classifier.
-3. Optionally add an `ENFORCEMENT_EXCLUSIONS`/authority pack (`enterprise-skills init`) so future sessions are governed.
 
 ### External Tasks (User Action Required)
 1. Open the PR for `fix/es-p0-action-credential-boundary` (GitHub) — not opened by the agent; its `Action tests` workflow runs on PR.
 2. Decide on merge + `v1` retag after independent verification (GitHub releases) — deliberately not performed.
 
+Status reconfirmed 2026-08-20 (America/Los_Angeles): both items remain pending (user confirmed).
+
 ## Completed Since Last Checkpoint
 - 2026-08-21 ES-P0-ACTION-CREDENTIAL-SCOPE Action half implemented, tested (412 assertions), ledgered, pushed — verified by `git log origin/fix/es-p0-action-credential-boundary` = `46c7781`.
+- 2026-08-20 Authority pack initialized with the enterprise profile; `enterprise-skills validate --json` reports `complete` and `context gate` passes (filesystem and executable evidence).
 
 ## Files Modified This Session
 - `action.yml`, `README.md` — rewritten (see Changes Made)

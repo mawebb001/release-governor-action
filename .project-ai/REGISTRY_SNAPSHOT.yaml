@@ -1,0 +1,22 @@
+snapshot_date: '2026-08-21T05:55:23.900Z'
+source_version: enterprise-skills-4.30.2-community
+scope: installed_community_tier
+limitation: The npm package omits canonical-skills.yaml; this snapshot contains the eight skills actually rendered by init.
+
+skills:
+  - skill_id: session-start
+    category: lifecycle
+  - skill_id: session-end
+    category: lifecycle
+  - skill_id: refactor-agent
+    category: agentic
+  - skill_id: project-initiator
+    category: lifecycle
+  - skill_id: feedback
+    category: lifecycle
+  - skill_id: feature-builder
+    category: agentic
+  - skill_id: code-review
+    category: audit
+  - skill_id: bug-hunter
+    category: agentic

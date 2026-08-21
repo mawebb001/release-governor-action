@@ -1,0 +1,53 @@
+generated: '2026-08-21T05:55:23.900Z'
+generator_version: '4.30.2-manual-repair'
+project_name: release-governor-action
+
+classification:
+  archetypes:
+    - github-action
+    - developer-tool
+    - security-governance
+  stack:
+    language: bash
+    additional_languages:
+      - yaml
+      - python
+      - javascript
+    framework: github-actions-composite
+    database: none
+    auth: none
+    payments: none
+    services:
+      - github-actions
+      - enterprise-skills
+      - anthropic
+  maturity: production
+  risk_dimensions:
+    - credentials
+    - supply-chain
+    - ci-execution
+  governance_profile: enterprise
+
+commands:
+  dev: null
+  build: null
+  test: bash tests/run.sh
+  lint: python tests/static_checks.py
+  typecheck: null
+
+paths:
+  api_routes: null
+  service_layer: scripts/
+  components: null
+  tests: tests/
+
+patterns:
+  auth_check: null
+  db_client: null
+  logger: source scripts/lib.sh; use rg_log, rg_notice, rg_warn, or rg_error
+  error_response: use rg_error followed by a non-zero exit
+
+adapters:
+  rendered:
+    - cursor
+  primary: cursor

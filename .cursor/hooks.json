@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/enterprise-skills/pre-shell-gate.mjs",
+        "timeout": 15
+      }
+    ],
+    "userPromptSubmit": [
+      {
+        "command": "node .cursor/hooks/enterprise-skills/input-gateway.mjs",
+        "timeout": 60
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "node .cursor/hooks/enterprise-skills/session-start.mjs",
+        "timeout": 45
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/enterprise-skills/stop-signal-active.mjs",
+        "timeout": 60
+      },
+      {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/scan-autopilot-scope.ps1 -EndOfTurn",
+        "timeout": 30
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/scan-autopilot-scope.ps1",
+        "timeout": 30
+      }
+    ]
+  }
+}

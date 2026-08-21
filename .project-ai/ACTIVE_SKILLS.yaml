@@ -1,0 +1,23 @@
+generated: '2026-08-21T05:55:23.900Z'
+governance_profile: enterprise
+catalog_scope: community_tier_rendered_by_enterprise_skills_4.30.2
+
+active:
+  - skill_id: session-start
+    reason: required_by_profile
+  - skill_id: session-end
+    reason: required_by_profile
+  - skill_id: refactor-agent
+    reason: available_in_community_tier
+  - skill_id: project-initiator
+    reason: available_in_community_tier
+  - skill_id: feedback
+    reason: available_in_community_tier
+  - skill_id: feature-builder
+    reason: available_in_community_tier
+  - skill_id: code-review
+    reason: available_in_community_tier
+  - skill_id: bug-hunter
+    reason: available_in_community_tier
+
+inactive: []
