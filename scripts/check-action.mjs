@@ -7,7 +7,13 @@
 //   - an `agents run` / `orchestrate workflow run` command lacks
 //     `--pass-env ANTHROPIC_API_KEY`;
 //   - the cli-version default is not an exact version;
-//   - a claude-code install is not an exact version.
+//   - a claude-code install is not an exact version;
+//   - the evidence gate is not wired: there must be exactly one step with an
+//     `id` whose run invokes scripts/evidence-gate.mjs, fed the installed
+//     version (`enterprise-skills --version`), placed before every step that
+//     starts an agent; and every such step's `if` must require
+//     `steps.<that id>.outputs.allowed == 'true'` as a top-level `&&` term;
+//   - a step's shape cannot be read (a `uses:` step, an unparseable `if`).
 // Then runs the evidence gate's own table.
 //
 // Usage: node scripts/check-action.mjs [path/to/action.yml]
@@ -152,6 +158,101 @@ function logicalLines(run) {
   return run.replace(/\\\r?\n/g, ' ').split(/\r?\n/);
 }
 
+const STARTS_AGENT = /\bclaude\b|agents run|orchestrate/;
+const RUNS_GATE = /scripts\/evidence-gate\.mjs\b/;
+const STEP_ID = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+const GATE_TERM = /^steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.allowed\s*==\s*'true'$/;
+
+// True when the first '(' of t closes at its last character.
+function wrapsWhole(t) {
+  if (!t.startsWith('(') || !t.endsWith(')')) return false;
+  let depth = 0;
+  let quote = false;
+  for (let i = 0; i < t.length; i += 1) {
+    const c = t[i];
+    if (quote) {
+      if (c === "'") {
+        if (t[i + 1] === "'") i += 1;
+        else quote = false;
+      }
+      continue;
+    }
+    if (c === "'") quote = true;
+    else if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0 && i < t.length - 1) return false;
+    }
+  }
+  return depth === 0;
+}
+
+// The step ids an `if` requires to have outputs.allowed == 'true', read from
+// its top-level `&&` terms. Anything that could make the gate optional or that
+// cannot be read (a top-level `||`, partial `${{ }}`, unbalanced quotes or
+// parentheses) is { ok: false }: unverifiable is not negative.
+export function requiredGateIds(ifText) {
+  if (typeof ifText !== 'string') return { ok: false, why: 'not a string' };
+  let e = ifText.trim();
+  const wrapped = /^\$\{\{([\s\S]*)\}\}$/.exec(e);
+  if (wrapped) e = wrapped[1].trim();
+  if (e.includes('${{') || e.includes('}}')) return { ok: false, why: 'partial ${{ }} interpolation' };
+  const terms = [];
+  let depth = 0;
+  let quote = false;
+  let start = 0;
+  for (let i = 0; i < e.length; i += 1) {
+    const c = e[i];
+    if (quote) {
+      if (c === "'") {
+        if (e[i + 1] === "'") i += 1;
+        else quote = false;
+      }
+      continue;
+    }
+    if (c === "'") quote = true;
+    else if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth < 0) return { ok: false, why: 'unbalanced parentheses' };
+    } else if (depth === 0 && e.startsWith('||', i)) {
+      return { ok: false, why: "a top-level '||' can make the gate optional" };
+    } else if (depth === 0 && e.startsWith('&&', i)) {
+      terms.push(e.slice(start, i));
+      start = i + 2;
+      i += 1;
+    }
+  }
+  if (quote || depth !== 0) return { ok: false, why: 'unbalanced quotes or parentheses' };
+  terms.push(e.slice(start));
+  const ids = [];
+  for (let t of terms) {
+    t = t.trim();
+    while (wrapsWhole(t)) t = t.slice(1, -1).trim();
+    const m = GATE_TERM.exec(t);
+    if (m) ids.push(m[1]);
+  }
+  return { ok: true, ids };
+}
+
+// Problems with how the gate step feeds the gate the installed version.
+function gateFeedProblems(run) {
+  const problems = [];
+  const lines = logicalLines(run);
+  const capture = lines.findIndex((l) => /\bES_VERSION_OUT="\$\(enterprise-skills --version\)"/.test(l));
+  const invoke = lines.findIndex((l) => /\bnode\b/.test(l) && RUNS_GATE.test(l));
+  const exported = lines.findIndex((l) => /^\s*export\b/.test(l) && /\bES_VERSION_OUT\b/.test(l) && /\bES_VERSION_RC\b/.test(l));
+  if (capture < 0) problems.push('does not capture `enterprise-skills --version` into ES_VERSION_OUT');
+  if ((run.match(/\bES_VERSION_OUT=/g) ?? []).length !== 1) problems.push('assigns ES_VERSION_OUT other than exactly once');
+  if (!/\bES_VERSION_RC=\$\?/.test(run)) problems.push('does not pass the exit status of `enterprise-skills --version` as ES_VERSION_RC');
+  if (invoke < 0) problems.push('does not run scripts/evidence-gate.mjs with node');
+  if (exported < 0) problems.push('does not export ES_VERSION_OUT and ES_VERSION_RC');
+  if (capture >= 0 && invoke >= 0 && !(capture <= exported && exported < invoke)) {
+    problems.push('does not capture and export the version before running the gate');
+  }
+  return problems;
+}
+
 export function checkAction(doc) {
   const failures = [];
   const steps = doc?.runs?.steps;
@@ -166,11 +267,55 @@ export function checkAction(doc) {
     failures.push(`[input cli-version] default ${JSON.stringify(def)} is not an exact version (want e.g. "4.31.0")`);
   }
 
+  const stepName = (step, idx) => step?.name ?? `#${idx + 1}`;
+  const gates = steps.map((step, idx) => ({ step, idx })).filter(({ step }) => typeof step?.run === 'string' && RUNS_GATE.test(step.run));
+  let gate = null;
+  if (gates.length === 0) {
+    failures.push('[gate] no step runs scripts/evidence-gate.mjs — the evidence phase is not gated');
+  } else if (gates.length > 1) {
+    failures.push(`[gate] ${gates.length} steps run scripts/evidence-gate.mjs (${gates.map((g) => stepName(g.step, g.idx)).join('; ')}) — ambiguous, cannot verify`);
+  } else {
+    gate = gates[0];
+    const gname = stepName(gate.step, gate.idx);
+    if (typeof gate.step.id !== 'string' || !STEP_ID.test(gate.step.id)) {
+      failures.push(`[step: ${gname}] the gate step has no usable id, so no step can require its output`);
+    }
+    for (const p of gateFeedProblems(gate.step.run)) failures.push(`[step: ${gname}] the gate step ${p}`);
+  }
+  const gateId = typeof gate?.step.id === 'string' ? gate.step.id : null;
+
   steps.forEach((step, idx) => {
-    const name = step?.name ?? `#${idx + 1}`;
-    const run = typeof step?.run === 'string' ? step.run : '';
-    const env = step?.env ?? {};
-    const startsAgent = /\bclaude\b|agents run|orchestrate/.test(run);
+    const name = stepName(step, idx);
+    if (step === null || typeof step !== 'object') {
+      failures.push(`[step: ${name}] is not a mapping — cannot check (fail closed)`);
+      return;
+    }
+    if (typeof step.run !== 'string') {
+      failures.push(`[step: ${name}] has no run text${step.uses ? ` (uses: ${step.uses})` : ''} — cannot tell whether it starts an agent (fail closed)`);
+      return;
+    }
+    const run = step.run;
+    const env = step.env ?? {};
+    const startsAgent = STARTS_AGENT.test(run);
+    if (startsAgent) {
+      if (gate && gate.idx > idx) {
+        failures.push(`[step: ${name}] starts an agent before the gate step (${stepName(gate.step, gate.idx)}) runs`);
+      }
+      if (step.if === undefined || step.if === null || step.if === '') {
+        failures.push(`[step: ${name}] starts an agent with no if — it is not gated`);
+      } else {
+        const req = requiredGateIds(step.if);
+        if (!req.ok) {
+          failures.push(`[step: ${name}] if cannot be verified (${req.why}) — fail closed`);
+        } else if (req.ids.length === 0) {
+          failures.push(`[step: ${name}] if does not require steps.<gate id>.outputs.allowed == 'true'`);
+        } else if (!gate) {
+          failures.push(`[step: ${name}] if requires steps.${req.ids.join('/')}.outputs.allowed, but there is no single gate step`);
+        } else if (!gateId || !req.ids.includes(gateId)) {
+          failures.push(`[step: ${name}] if requires steps.${req.ids.join('/')}.outputs.allowed, but the gate step's id is ${JSON.stringify(gate.step.id ?? null)}`);
+        }
+      }
+    }
     if (startsAgent && 'ES_LICENSE_KEY' in env) {
       failures.push(`[step: ${name}] ES_LICENSE_KEY is in the env of a step that starts an agent`);
     }

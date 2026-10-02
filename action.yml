@@ -74,7 +74,8 @@ runs:
 
     # cli >=4.14 resolves ES_LICENSE_KEY env-first on every posting path
     # (govern --post, deploy record/gate, journey run), so the license rides
-    # as env on the steps below and nothing touches disk. Older releases read
+    # as env on this step and the govern step only (never on an evidence
+    # step, where an agent runs) and nothing touches disk. Older releases read
     # only ~/.enterprise-skills/license.json, so a pinned cli-version below
     # 4.14 still gets the keys-only file planted (planted, never
     # device-activated — device seats are for workstations and an ephemeral
