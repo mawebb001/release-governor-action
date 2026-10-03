@@ -16,5 +16,20 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: Guard action.yml and run the evidence gate table
+      # The real YAML parser the guard compares its own reading with. Used by
+      # this check only; nothing a consumer's run of the action installs.
+      - name: Install the pinned YAML parser (check only)
+        working-directory: check-parser
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Guard action.yml and run the gate and cli-version tables
+        if: ${{ !cancelled() }}
         run: node scripts/check-action.mjs
+      - name: Confirm the pins against the npm registry
+        if: ${{ !cancelled() }}
+        run: node scripts/check-registry.mjs
+      - name: Run action.yml's steps against fakes (T1)
+        if: ${{ !cancelled() }}
+        run: node scripts/test-action-run.mjs
+      - name: Guard mutants and registry failure paths (T2)
+        if: ${{ !cancelled() }}
+        run: node scripts/test-guard.mjs
