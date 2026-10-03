@@ -23,10 +23,14 @@ inputs:
   anthropic-api-key:
     description: >-
       Optional. Funds the headless evidence phase (semantic domain agents).
-      Reaches the agent only by name (--pass-env ANTHROPIC_API_KEY), which
-      needs an installed cli >= 4.31.0; on an older or pre-release CLI the
-      evidence phase is refused with an error, the govern step runs, and the
-      job then fails.
+      Both evidence steps pass --pass-env ANTHROPIC_API_KEY: cli 4.31.0 hands
+      the agent an allowlisted environment, and the key is in it because the
+      flag names it (without the flag, no credential-like name is in it). The
+      agent runs as the same OS user as the CLI, so it can read the CLI
+      process's environment, which holds the key with or without the flag.
+      The flag needs an installed cli >= 4.31.0; on an older or pre-release
+      CLI the evidence phase is refused with an error, the govern step runs,
+      and the job then fails.
       Without it the evidence phase is skipped with a visible notice and the
       Governor decides over whatever evidence is committed — which, in enforce
       mode, is an honest FAIL on evidence-requiring diffs, not a bug. Consider
@@ -77,9 +81,10 @@ runs:
     # The one read of the installed version; later steps use its
     # outputs. An unreadable version fails the job here, before govern. A
     # readable one older than 4.31.0, or a pre-release, refuses the evidence
-    # phase (no cli before 4.31.0 hands the agent an allowlisted environment or
-    # takes the vendor key by name); govern still runs, and when the phase was
-    # asked for and funded, the last step fails the job.
+    # phase (4.30.2, the release before 4.31.0, rejects --pass-env and,
+    # without it, hands the agent the step's whole environment); govern still
+    # runs, and when the phase was asked for and funded, the last step fails
+    # the job.
     - name: Installed CLI version and evidence gate
       id: cli
       shell: bash

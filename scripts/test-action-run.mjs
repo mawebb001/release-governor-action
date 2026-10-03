@@ -365,7 +365,12 @@ export const CASES = [
     fake: { FAKE_VERSION_OUT: '4.30.2\\n' },
     ran: ['install', 'cli', 'compat', 'govern', 'failed'],
     job: 'failure',
-    annotations: [/^error title=Evidence phase refused::enterprise-skills 4\.30\.2 is installed \(installed 4\.30\.2 is older than 4\.31\.0\)\. .*Both evidence steps are skipped; the govern step runs and then the job fails\. Fix: set cli-version to 4\.31\.0 or newer\.$/, FINAL_REFUSED],
+    annotations: [
+      exactly(
+        "error title=Evidence phase refused::enterprise-skills 4.30.2 is installed (installed 4.30.2 is older than 4.31.0). The evidence phase needs a plain release >= 4.31.0: 4.31.0 hands the agent an allowlisted environment, and the vendor key is in it because the evidence steps pass --pass-env ANTHROPIC_API_KEY. The agent runs as the same OS user as the CLI, so it can read the CLI process's environment, which holds the key with or without the flag. Both evidence steps are skipped; the govern step runs and then the job fails. Fix: set cli-version to 4.31.0 or newer.",
+      ),
+      FINAL_REFUSED,
+    ],
     check: (r) => [[calls(r, 'enterprise-skills').some((c) => c.argv[0] === 'govern'), 'govern ran']],
   },
   {

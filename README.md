@@ -31,6 +31,13 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }} # optional — funds the evidence phase
 ```
 
+The agent runs as the same OS user as the CLI, so it can read the
+environment of the CLI process that started it, with or without
+`--pass-env`: measured with cli 4.31.0 and a stub agent, that environment
+held `ANTHROPIC_API_KEY` and the other credential names the measurement set
+on the evidence step (`ES_LICENSE_KEY`, `GITHUB_TOKEN`,
+`ACTIONS_ID_TOKEN_REQUEST_TOKEN`).
+
 ## Inputs
 
 | Input | Required | Default | What it does |
@@ -83,11 +90,13 @@ but a job-level `env:` name reaches it: this repository's runner check
 ## Backward compatibility: pinning an older CLI
 
 The evidence phase needs a plain release ≥ 4.31.0. In 4.31.0 the agent gets
-an allowlisted environment: the vendor key reaches it only by name
-(`--pass-env ANTHROPIC_API_KEY`), and the action does not put `ES_LICENSE_KEY`
-in the environment of either evidence step. No earlier release accepts
-`--pass-env`, and the earlier releases that ship `agents run` (3.11.0
-through 4.30.2) give the agent the step's whole environment. So the action
+an allowlisted environment: the vendor key is in it because both evidence
+steps pass `--pass-env ANTHROPIC_API_KEY` (without the flag, no
+credential-like name is in it), and the action does not put `ES_LICENSE_KEY`
+in the environment of either evidence step. What the agent can read outside
+that environment is under Usage. 4.30.2, the release before 4.31.0, rejects
+`--pass-env`, and without it gives the agent the step's whole environment.
+So the action
 reads the **installed** version once: below 4.31.0, or a pre-release, it skips
 both evidence steps with an error annotation naming the fix; the govern step
 runs, and when the evidence phase was asked for and funded, the job then
