@@ -5,11 +5,15 @@
 // claude on PATH (no network, no real CLI, no agent). Each case asserts which
 // steps ran, the job's final status and the annotation text.
 //
-// The harness models these GitHub semantics (documented, not measured here):
-// a composite step's `if` without a status function is ANDed with success();
-// success() is false once a step concluded failure; a failing step with
-// continue-on-error: true has outcome failure and conclusion success; the job
-// fails when a step concludes failure.
+// The harness models these GitHub semantics. The action-runner-proof job in
+// .github/workflows/check.yml (scripts/runner-proof.mjs) measures them on a
+// GitHub runner, running this action against fakes: a failing step with
+// continue-on-error: true lets later steps run (cases b, c) while composite
+// steps read its outcome as failure (the last step's annotation in b, c); a
+// composite step's `if` without a status function is ANDed with success(),
+// which is false once a step concluded failure (case d: govern does not run);
+// a composite step that fails without continue-on-error fails the action step
+// (cases b-e6). Not measured: success() on a cancelled run.
 //
 // Usage: node scripts/test-action-run.mjs   (needs check-parser/ installed;
 // CHECK_PARSER_DIR overrides it). Exit 0 when every case passes.

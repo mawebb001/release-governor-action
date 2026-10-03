@@ -76,6 +76,10 @@ The action does not set up Node. `@anthropic-ai/claude-code@2.1.285` declares
 and `claude --version` and `claude --help` exit 0 (an agent run on Node 20 was
 not measured).
 
+Keep keys out of job-level `env:`. The Claude Code install step sets no key,
+but a job-level `env:` name reaches it: this repository's runner check
+(`action-runner-proof`) sets one and records it in that step's environment.
+
 ## Backward compatibility: pinning an older CLI
 
 The evidence phase needs a plain release ≥ 4.31.0. In 4.31.0 the agent gets
