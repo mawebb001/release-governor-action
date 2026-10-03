@@ -37,8 +37,8 @@ jobs:
 |---|---|---|---|
 | `license-key` | yes | — | Your Enterprise Skills license key, from a repo secret. Rides as **`ES_LICENSE_KEY` env** only on the license-compatibility and govern steps, not on an evidence step where an agent runs. The action does not device-activate it, and on an installed cli ≥ 4.14 writes no license file. Mint a dedicated CI service key with `enterprise-skills license mint-ci` instead of reusing a workstation key. |
 | `anthropic-api-key` | no | `""` | Funds the headless evidence phase. Absent = the phase is skipped with a visible notice. |
-| `evidence` | no | `agents` | `agents` (PR-scale semantic agents, minutes) · `release-readiness` (full workflow, up to 90 min) · `none`. |
-| `cli-version` | no | `4.31.0` | The `enterprise-skills` npm version (`4.31.0`) or semver range (`^4.31.0`, `>=4.31.0 <5.0.0`). Anything else, such as a dist-tag or an `npm:` alias, fails the job before anything is installed. The evidence phase needs an installed plain release ≥ 4.31.0; the govern step also runs on an older release. |
+| `evidence` | no | `agents` | `agents` (PR-scale semantic agents, minutes) · `release-readiness` (full workflow, up to 90 min) · `none`. Any other value fails the job after the govern step runs. |
+| `cli-version` | no | `4.31.0` | The `enterprise-skills` npm version (`4.31.0`) or semver range (`^4.31.0`, `>=4.31.0 <5.0.0`). Anything else, such as a dist-tag or an `npm:` alias, fails the job before anything is installed. The evidence phase needs an installed plain release ≥ 4.31.0; on an older release the govern step still runs, and when the evidence phase was asked for and funded the job then fails. |
 
 ## Three things that will bite you if you skip them
 
@@ -61,14 +61,20 @@ jobs:
 
 validate `cli-version` and install the CLI → read the installed version once
 (a version it cannot read fails the job here) → hand the license to the
-compatibility step as `ES_LICENSE_KEY` env → *(optionally, on cli ≥ 4.31.0 with
-no license file in the runner's home)* install the pinned Claude Code in a step
-that sets neither key and run the headless evidence phase →
+compatibility step as `ES_LICENSE_KEY` env → *(optionally, on cli ≥ 4.31.0)*
+install the pinned Claude Code in a step that sets neither key → check for a
+license file in the runner's home → run the headless evidence phase →
 `govern --post`, which classifies the diff, evaluates the committed evidence
 against versioned policy, prints the decision, and posts it — completing the
 required check with a countersigned, independently verifiable record → fail
-the job if an evidence step failed. Setup and full docs:
+the job if the evidence phase failed or was refused, or if the `evidence`
+input is invalid. Setup and full docs:
 <https://enterpriseskills.ai/release-gates>.
+
+The action does not set up Node. `@anthropic-ai/claude-code@2.1.285` declares
+`node >=22.0.0`; on Node 20.19.0, npm installs it with an `EBADENGINE` warning
+and `claude --version` and `claude --help` exit 0 (an agent run on Node 20 was
+not measured).
 
 ## Backward compatibility: pinning an older CLI
 
@@ -79,8 +85,9 @@ in the environment of either evidence step. No earlier release accepts
 `--pass-env`, and the earlier releases that ship `agents run` (3.11.0
 through 4.30.2) give the agent the step's whole environment. So the action
 reads the **installed** version once: below 4.31.0, or a pre-release, it skips
-both evidence steps with an error annotation naming the fix, and the job
-continues to the govern step. When `enterprise-skills --version` fails or
+both evidence steps with an error annotation naming the fix; the govern step
+runs, and when the evidence phase was asked for and funded, the job then
+fails. When `enterprise-skills --version` fails or
 prints something that is not a version, the job fails at that step with an
 error naming the fix, and the govern step does not run.
 
@@ -88,10 +95,13 @@ The allowlist passes `HOME` to the agent, so a license file in the runner's
 home is readable by the agent whoever wrote it. The action therefore refuses
 the evidence phase while `~/.enterprise-skills/license.json` exists (or when
 it cannot tell), with an error annotation naming the fix; it does not change
-the file, and the job continues to the govern step.
+the file, the govern step runs, and the job then fails. The check runs after
+the Claude Code install, as the last step before the evidence steps.
 
-When an evidence step fails, the govern step still runs over the evidence
-that exists, and a last step then fails the job.
+When an evidence step or the Claude Code install fails, the govern step still
+runs over the evidence that exists, and a last step then fails the job. That
+last step also fails the job when the `evidence` input is not `agents`,
+`release-readiness` or `none`.
 
 Since `enterprise-skills` 4.14.0 the CLI resolves `ES_LICENSE_KEY` env-first
 on every posting path (`govern --post`, `deploy record`/`gate`,

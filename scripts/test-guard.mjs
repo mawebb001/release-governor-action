@@ -13,7 +13,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkActionText, loadRealParser } from './check-action.mjs';
+import { FAIL_TERMS, checkActionText, loadRealParser } from './check-action.mjs';
 import { checkRegistry } from './check-registry.mjs';
 import { CLAUDE_CODE_PIN, CLI_PIN } from './pins.mjs';
 
@@ -32,13 +32,21 @@ const chain = (...fs) => (text) => fs.reduce((t, f) => f(t), text);
 
 const AGENTS_RUN = '      run: enterprise-skills agents run --yes --base "origin/$BASE_REF" --pass-env ANTHROPIC_API_KEY --agent-cmd "claude -p \\"{prompt}\\" --permission-mode acceptEdits"\n';
 const RR_RUN = '      run: enterprise-skills orchestrate workflow run release-readiness --yes --pass-env ANTHROPIC_API_KEY --agent-cmd';
-const AGENTS_IF = "      if: ${{ steps.cli.outputs.evidence == 'agents' && steps.license-file.outputs.clear == 'true' && steps.claude-code.outcome == 'success' }}\n";
-const RR_IF = "      if: ${{ steps.cli.outputs.evidence == 'release-readiness' && steps.license-file.outputs.clear == 'true' && steps.claude-code.outcome == 'success' }}\n";
+const AGENTS_IF = "      if: ${{ steps.cli.outputs.evidence == 'agents' && steps.claude-code.outcome == 'success' && steps.license-file.outputs.clear == 'true' }}\n";
+const RR_IF = "      if: ${{ steps.cli.outputs.evidence == 'release-readiness' && steps.claude-code.outcome == 'success' && steps.license-file.outputs.clear == 'true' }}\n";
+const COULD_RUN_IF = "      if: ${{ steps.cli.outputs.evidence == 'agents' || steps.cli.outputs.evidence == 'release-readiness' }}\n";
+const LF_STEP = `    - name: License file check (refuse the evidence phase next to a license file)
+      id: license-file
+${COULD_RUN_IF}      shell: bash
+      run: node "$GITHUB_ACTION_PATH/scripts/license-file-check.mjs"
+
+`;
+const LAST_STEP_START = '    - name: Fail the job when the evidence phase failed or was refused\n';
+const LAST_IF = `      if: \${{ ${FAIL_TERMS.join(' || ')} }}\n`;
 const AGENTS_ENV = '        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}\n        BASE_REF: ${{ github.base_ref }}\n      run: enterprise-skills agents run';
 const CC_STEP = `    - name: Install Claude Code (evidence phase)
       id: claude-code
-      if: \${{ steps.license-file.outputs.clear == 'true' }}
-      continue-on-error: true
+${COULD_RUN_IF}      continue-on-error: true
       shell: bash
       run: npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_PIN}
 
@@ -56,11 +64,12 @@ const STEP = {
   install: 'step 1: Install Enterprise Skills CLI',
   cli: 'step 2: Installed CLI version and evidence gate',
   compat: 'step 3: License compatibility (plant the file only for cli < 4.14)',
-  licenseFile: 'step 4: License file check (refuse the evidence phase next to a license file)',
-  claudeCode: 'step 5: Install Claude Code (evidence phase)',
+  claudeCode: 'step 4: Install Claude Code (evidence phase)',
+  licenseFile: 'step 5: License file check (refuse the evidence phase next to a license file)',
   agents: 'step 6: Evidence phase (semantic agents)',
   rr: 'step 7: Evidence phase (full release-readiness workflow)',
   govern: 'step 9: Govern and post the decision (completes the PR check run)',
+  last: 'step 10: Fail the job when the evidence phase failed or was refused',
 };
 
 // [group, name, mutate, expected fragment(s) of failure lines, opts?]
@@ -70,7 +79,7 @@ export const MUTANTS = [
   ['verifier', 'flag only in a shell comment on the command\'s own line', replace(AGENTS_RUN, '      run: |\n        enterprise-skills agents run --yes --base "origin/$BASE_REF" --agent-cmd "claude -p \\"{prompt}\\" --permission-mode acceptEdits" # --pass-env ANTHROPIC_API_KEY\n'), `[${STEP.agents}] run line 1 is not expected`],
   ['verifier', 'cli-version default exact 4.30.2', replace('    default: "4.31.0"\n', '    default: "4.30.2"\n'), '[input cli-version] default is "4.30.2", expected "4.31.0"'],
   ['verifier', 'artifact identity comment removed', chain(...IDENTITY.map((l) => replace(l, ''))), '[input cli-version] the comment beside the default does not record "Verified artifact: enterprise-skills@4.31.0"'],
-  ['verifier', 'claude-code install removed', replace(CC_STEP, ''), `[step 5: Evidence phase (semantic agents)] is not the expected step here (expected "Install Claude Code (evidence phase)")`],
+  ['verifier', 'claude-code install removed', replace(CC_STEP, ''), `[step 4: License file check (refuse the evidence phase next to a license file)] is not the expected step here (expected "Install Claude Code (evidence phase)")`],
   ['verifier', 'nonexistent claude-code version in action.yml', replace(`@anthropic-ai/claude-code@${CLAUDE_CODE_PIN}`, '@anthropic-ai/claude-code@99.99.99'), `[${STEP.claudeCode}] run line 1 is not expected: "npm install -g @anthropic-ai/claude-code@99.99.99"`],
   ['verifier', 'agent started through a variable', chain(replace(GOVERN_ENV, `${GOVERN_ENV}        AGENT: claude\n`), replace('      run: enterprise-skills govern --post', '      run: |\n        "$AGENT" -p "{prompt}"\n        enterprise-skills govern --post')), `[${STEP.govern}] env name AGENT is not expected`],
   // ACT-1 mutants.
@@ -113,16 +122,11 @@ export const MUTANTS = [
   ['G1', 'govern runs always()', replace('    - name: Govern and post the decision (completes the PR check run)\n', '    - name: Govern and post the decision (completes the PR check run)\n      if: ${{ always() }}\n'), `[${STEP.govern}] key "if" is not expected`],
   ['G1', 'cli-version interpolated into run again', replace('npm install -g "enterprise-skills@$ES_CLI_VERSION"', 'npm install -g "enterprise-skills@${{ inputs.cli-version }}"'), `[${STEP.install}] run line 2 is not expected`],
   ['G1', 'cli-version validation removed', replace('        node "$GITHUB_ACTION_PATH/scripts/cli-version.mjs"\n', ''), `[${STEP.install}] run line 1 is not expected`],
-  ['G1', 'license-file check made unconditional', replace("      if: ${{ steps.cli.outputs.evidence == 'agents' || steps.cli.outputs.evidence == 'release-readiness' }}\n", ''), `[${STEP.licenseFile}] key "if" is missing`],
+  ['G1', 'license-file check made unconditional', replace(LF_STEP, LF_STEP.replace(COULD_RUN_IF, '')), `[${STEP.licenseFile}] key "if" is missing`],
   ['G1', 'ANTHROPIC_API_KEY on the claude-code install', replace('      run: npm install -g @anthropic-ai/claude-code@', '      env:\n        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}\n      run: npm install -g @anthropic-ai/claude-code@'), `[${STEP.claudeCode}] key "env" is not expected`],
   ['G1', 'working-directory on the agents step', replace(AGENTS_IF, `${AGENTS_IF}      working-directory: /tmp\n`), `[${STEP.agents}] key "working-directory" is not expected`],
   ['G1', 'continue-on-error removed from the agents step', replace(`${AGENTS_IF}      continue-on-error: true\n`, AGENTS_IF), `[${STEP.agents}] key "continue-on-error" is missing`],
-  ['G1', 'evidence-failure step removed', (t) => {
-    const a = t.indexOf('    - name: Fail the job when the evidence phase failed\n');
-    if (a < 0) throw new Error('anchor');
-    return t.slice(0, a);
-  }, '[step 10: Fail the job when the evidence phase failed] is missing'],
-  ['G1', 'license-key required flag flipped', replace('      phase is refused while a license file exists in the runner\'s home.\n    required: true\n', '      phase is refused while a license file exists in the runner\'s home.\n    required: false\n'), '[input license-key] required is "false", expected "true"'],
+  ['G1', 'license-key required flag flipped', replace('    required: true\n', '    required: false\n'), '[input license-key] required is "false", expected "true"'],
   ['G1', 'outputs added', (t) => `${t.replace('runs:\n', 'outputs:\n  decision:\n    description: x\n    value: y\n\nruns:\n')}`, '[top level] keys are'],
   ['G2', 'integrity in the identity comment altered', replace(IDENTITY[1], IDENTITY[1].replace('pQSF', 'pQSG')), `[input cli-version] the comment beside the default does not record "dist.integrity ${CLI_PIN.integrity}"`],
   ['G2', 'gitHead in the identity comment altered', replace(IDENTITY[2], IDENTITY[2].replace('3be3bb1c', '3be3bb1d')), `[input cli-version] the comment beside the default does not record "gitHead ${CLI_PIN.gitHead}"`],
@@ -137,7 +141,26 @@ export const MUTANTS = [
   ['G4', 'flow mapping env', replace(AGENTS_ENV, '        {ANTHROPIC_API_KEY: "${{ inputs.anthropic-api-key }}", BASE_REF: "${{ github.base_ref }}"}\n      run: enterprise-skills agents run'), "[parser] the guard's own reading fails"],
   ['G4', 'quoted env key', replace(AGENTS_ENV, `        "ES_LICENSE_KEY": \${{ inputs.license-key }}\n${AGENTS_ENV}`), "[parser] the guard's own reading fails"],
   ['G4', 'explicit tag', replace('      id: cli\n', '      id: !!str cli\n'), '[parser] yaml 2.9.1: explicit tag'],
-  ['G4', 'multi-line plain scalar in an if', replace(AGENTS_IF, "      if: ${{ steps.cli.outputs.evidence == 'agents' &&\n        steps.license-file.outputs.clear == 'true' && steps.claude-code.outcome == 'success' }}\n"), '[parser]'],
+  ['G4', 'multi-line plain scalar in an if', replace(AGENTS_IF, "      if: ${{ steps.cli.outputs.evidence == 'agents' &&\n        steps.claude-code.outcome == 'success' && steps.license-file.outputs.clear == 'true' }}\n"), '[parser]'],
+  // ACT-2B (RL-93, RL-94).
+  ...FAIL_TERMS.map((term) => [
+    'ACT-2B',
+    `last step's if loses "${term}"`,
+    replace(LAST_IF, `      if: \${{ ${FAIL_TERMS.filter((t) => t !== term).join(' || ')} }}\n`),
+    `[${STEP.last}] if is`,
+  ]),
+  ['ACT-2B', 'last step removed', (t) => {
+    once(t, LAST_STEP_START);
+    return t.slice(0, t.indexOf(LAST_STEP_START));
+  }, `[${STEP.last}] is missing`],
+  ['ACT-2B', 'license-file check moved back before the Claude Code install', chain(replace(LF_STEP, ''), replace(CC_STEP, LF_STEP + CC_STEP)), '[step 4: License file check (refuse the evidence phase next to a license file)] is not the expected step here (expected "Install Claude Code (evidence phase)")'],
+  ['ACT-2B', 'a step inserted between the license-file check and the evidence steps', replace(LF_STEP, `${LF_STEP}    - name: Warm the cache\n      shell: bash\n      run: npm cache verify\n\n`), '[step 6: Warm the cache] is not the expected step here (expected "Evidence phase (semantic agents)")'],
+  ['ACT-2B', 'env added to the Claude Code install (no key name)', replace(`${COULD_RUN_IF}      continue-on-error: true\n      shell: bash\n      run: npm install -g`, `${COULD_RUN_IF}      continue-on-error: true\n      shell: bash\n      env:\n        NPM_CONFIG_LOGLEVEL: verbose\n      run: npm install -g`), `[${STEP.claudeCode}] key "env" is not expected`],
+  ['ACT-2B', 'agents if loses the license-file check', replace(AGENTS_IF, AGENTS_IF.replace(" && steps.license-file.outputs.clear == 'true'", '')), `[${STEP.agents}] if is`],
+  ['ACT-2B', 'agents if loses the install outcome', replace(AGENTS_IF, AGENTS_IF.replace(" && steps.claude-code.outcome == 'success'", '')), `[${STEP.agents}] if is`],
+  ['ACT-2B', 'release-readiness if loses the license-file check', replace(RR_IF, RR_IF.replace(" && steps.license-file.outputs.clear == 'true'", '')), `[${STEP.rr}] if is`],
+  ['ACT-2B', 'release-readiness if loses the install outcome', replace(RR_IF, RR_IF.replace(" && steps.claude-code.outcome == 'success'", '')), `[${STEP.rr}] if is`],
+  ['ACT-2B', 'install gated on a clear check again (the 6775c1f order)', replace(CC_STEP, CC_STEP.replace(COULD_RUN_IF, "      if: ${{ steps.license-file.outputs.clear == 'true' }}\n")), `[${STEP.claudeCode}] if is`],
 ];
 
 // Must pass: the guard is not a byte comparison.
@@ -202,7 +225,7 @@ async function main() {
     const hit = hits.every(Boolean);
     show(f.length > 0 && hit, `${group}: ${name} -> ${f.length} failure(s)`, hit ? hits.map((l) => `FAIL ${l}`) : [`expected failures containing: ${JSON.stringify(wants)}`, ...f.map((l) => `FAIL ${l}`)]);
   }
-  for (const file of ['action-7a935a0.yml', 'action-0f38775.yml']) {
+  for (const file of ['action-7a935a0.yml', 'action-0f38775.yml', 'action-6775c1f.yml']) {
     const f = checkActionText(readFileSync(join(REPO, 'scripts', 'fixtures', file), 'utf8'), { parser });
     show(f.length > 0, `old file ${file} -> ${f.length} failure(s)`, f.slice(0, 3).map((l) => `FAIL ${l}`));
   }

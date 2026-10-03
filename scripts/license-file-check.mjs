@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// License-file check, run after the license compatibility step and before the
-// evidence phase. enterprise-skills 4.31.0 (and the @enterprise-skills/core
+// License-file check, run after the Claude Code install as the last step before
+// the evidence steps. enterprise-skills 4.31.0 (and the @enterprise-skills/core
 // 4.10.1 it pins) reads a license from one file:
 //   (USERPROFILE ?? HOME ?? "")/.enterprise-skills/license.json
 // and passes HOME to the agent, so an agent can read that file whoever put it
@@ -9,7 +9,8 @@
 // directory, a symlink, dangling or not), or when that cannot be determined:
 // HOME unset, empty or relative, or a check that fails other than "not found".
 // It never deletes or modifies the file, and it never fails the step: a
-// refusal skips both evidence steps and the job continues to the govern step.
+// refusal skips both evidence steps, the govern step runs, and the action's
+// last step then fails the job.
 //
 // Writes clear=true|false to $GITHUB_OUTPUT.
 
@@ -79,10 +80,10 @@ if (invokedDirectly) {
       ? `A license file exists at ${r.present.join(' and ')}, which enterprise-skills reads and an agent started by the evidence phase could read. This step did not change it.`
       : `Whether a license file exists under the runner's home cannot be determined: ${r.undetermined.join('; ')}.`;
     const fix = r.present.length
-      ? 'Fix: remove whatever writes that file before this action runs (or run this action in a job without one); pass the key only through the license-key input.'
+      ? 'Fix: remove whatever writes that file before the evidence phase (or run this action in a job without one); pass the key only through the license-key input.'
       : 'Fix: run this action with HOME set to the runner user\'s home directory.';
     console.log(
-      `::error title=Evidence phase refused::${escapeData(what)} Both evidence steps are skipped and the job continues to the govern step. ${escapeData(fix)}`,
+      `::error title=Evidence phase refused::${escapeData(what)} Both evidence steps are skipped; the govern step runs and then the job fails. ${escapeData(fix)}`,
     );
   }
 }

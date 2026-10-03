@@ -212,6 +212,16 @@ export function differences(a, b, path = '') {
 // The expected action.
 
 const AGENT_CMD = '--agent-cmd "claude -p \\"{prompt}\\" --permission-mode acceptEdits"';
+const EVIDENCE_COULD_RUN = "${{ steps.cli.outputs.evidence == 'agents' || steps.cli.outputs.evidence == 'release-readiness' }}";
+// The last step's terms: each one fails the job after govern has run.
+export const FAIL_TERMS = [
+  "steps.claude-code.outcome == 'failure'",
+  "steps.agents.outcome == 'failure'",
+  "steps.release-readiness.outcome == 'failure'",
+  "steps.cli.outputs.refused == 'true'",
+  "steps.license-file.outputs.clear == 'false'",
+  "steps.cli.outputs.evidence-input-valid == 'false'",
+];
 
 export function expectedSteps(claudeCodePin = CLAUDE_CODE_PIN) {
   return [
@@ -253,24 +263,24 @@ export function expectedSteps(claudeCodePin = CLAUDE_CODE_PIN) {
       ],
     },
     {
-      name: 'License file check (refuse the evidence phase next to a license file)',
-      id: 'license-file',
-      if: "${{ steps.cli.outputs.evidence == 'agents' || steps.cli.outputs.evidence == 'release-readiness' }}",
-      shell: 'bash',
-      run: ['node "$GITHUB_ACTION_PATH/scripts/license-file-check.mjs"'],
-    },
-    {
       name: 'Install Claude Code (evidence phase)',
       id: 'claude-code',
-      if: "${{ steps.license-file.outputs.clear == 'true' }}",
+      if: EVIDENCE_COULD_RUN,
       'continue-on-error': 'true',
       shell: 'bash',
       run: [`npm install -g @anthropic-ai/claude-code@${claudeCodePin}`],
     },
     {
+      name: 'License file check (refuse the evidence phase next to a license file)',
+      id: 'license-file',
+      if: EVIDENCE_COULD_RUN,
+      shell: 'bash',
+      run: ['node "$GITHUB_ACTION_PATH/scripts/license-file-check.mjs"'],
+    },
+    {
       name: 'Evidence phase (semantic agents)',
       id: 'agents',
-      if: "${{ steps.cli.outputs.evidence == 'agents' && steps.license-file.outputs.clear == 'true' && steps.claude-code.outcome == 'success' }}",
+      if: "${{ steps.cli.outputs.evidence == 'agents' && steps.claude-code.outcome == 'success' && steps.license-file.outputs.clear == 'true' }}",
       'continue-on-error': 'true',
       shell: 'bash',
       env: { ANTHROPIC_API_KEY: '${{ inputs.anthropic-api-key }}', BASE_REF: '${{ github.base_ref }}' },
@@ -279,7 +289,7 @@ export function expectedSteps(claudeCodePin = CLAUDE_CODE_PIN) {
     {
       name: 'Evidence phase (full release-readiness workflow)',
       id: 'release-readiness',
-      if: "${{ steps.cli.outputs.evidence == 'release-readiness' && steps.license-file.outputs.clear == 'true' && steps.claude-code.outcome == 'success' }}",
+      if: "${{ steps.cli.outputs.evidence == 'release-readiness' && steps.claude-code.outcome == 'success' && steps.license-file.outputs.clear == 'true' }}",
       'continue-on-error': 'true',
       shell: 'bash',
       env: { ANTHROPIC_API_KEY: '${{ inputs.anthropic-api-key }}' },
@@ -301,11 +311,27 @@ export function expectedSteps(claudeCodePin = CLAUDE_CODE_PIN) {
       run: ['enterprise-skills govern --post --pr "$PR_NUMBER" --base "origin/$BASE_REF"'],
     },
     {
-      name: 'Fail the job when the evidence phase failed',
-      if: "${{ steps.claude-code.outcome == 'failure' || steps.agents.outcome == 'failure' || steps.release-readiness.outcome == 'failure' }}",
+      name: 'Fail the job when the evidence phase failed or was refused',
+      if: `\${{ ${FAIL_TERMS.join(' || ')} }}`,
       shell: 'bash',
+      env: {
+        CLAUDE_CODE_OUTCOME: '${{ steps.claude-code.outcome }}',
+        AGENTS_OUTCOME: '${{ steps.agents.outcome }}',
+        RELEASE_READINESS_OUTCOME: '${{ steps.release-readiness.outcome }}',
+        EVIDENCE_REFUSED: '${{ steps.cli.outputs.refused }}',
+        LICENSE_FILE_CLEAR: '${{ steps.license-file.outputs.clear }}',
+        EVIDENCE_INPUT_VALID: '${{ steps.cli.outputs.evidence-input-valid }}',
+      },
       run: [
-        'echo "::error title=Evidence phase failed::An evidence-phase step failed (its log is above). The govern step ran over the evidence that exists; this step fails the job so the failure stays visible."',
+        'if [ "$CLAUDE_CODE_OUTCOME" = "failure" ] || [ "$AGENTS_OUTCOME" = "failure" ] || [ "$RELEASE_READINESS_OUTCOME" = "failure" ]; then',
+        '  echo "::error title=Evidence phase failed::An evidence-phase step failed (its log is above). The govern step ran over the evidence that exists; this step fails the job so the failure stays visible."',
+        'fi',
+        'if [ "$EVIDENCE_REFUSED" = "true" ] || [ "$LICENSE_FILE_CLEAR" = "false" ]; then',
+        '  echo "::error title=Evidence phase refused::The evidence phase was asked for and funded but refused (the reason and the fix are in the error above). The govern step ran; this step fails the job so the refusal stays visible."',
+        'fi',
+        'if [ "$EVIDENCE_INPUT_VALID" = "false" ]; then',
+        '  echo "::error title=Invalid evidence input::The evidence input must be agents, release-readiness or none (the value is in the error above). The govern step ran; this step fails the job."',
+        'fi',
         'exit 1',
         '',
       ],

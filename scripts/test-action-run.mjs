@@ -162,7 +162,14 @@ process.exit(64);
 ${FAKE_LOGGER}
 log('npm');
 const a = process.argv.slice(2);
-if (a[0] === 'install' && a[1] === '-g' && /^@anthropic-ai\\/claude-code@/.test(a[2] ?? '')) process.exit(Number(process.env.FAKE_NPM_CLAUDE_EXIT ?? '0'));
+if (a[0] === 'install' && a[1] === '-g' && /^@anthropic-ai\\/claude-code@/.test(a[2] ?? '')) {
+  if (process.env.FAKE_NPM_CLAUDE_PLANT === '1') {
+    const { mkdirSync, writeFileSync } = require('node:fs');
+    mkdirSync(process.env.HOME + '/.enterprise-skills', { recursive: true });
+    writeFileSync(process.env.HOME + '/.enterprise-skills/license.json', '{"key":"placeholder-not-a-key"}');
+  }
+  process.exit(Number(process.env.FAKE_NPM_CLAUDE_EXIT ?? '0'));
+}
 process.exit(0);
 `,
   claude: `#!/usr/bin/env node
@@ -191,12 +198,12 @@ function makeBin(root, { withCli }) {
 
 const ANNOTATION = /^::(error|warning|notice)(?: ([^:]*))?::(.*)$/;
 
-export function runAction({ actionDir, parser, inputs = {}, fake = {}, withCli = true, setup, homeMode = 'absolute', pathPrefix }) {
+export function runAction({ actionDir, parser, inputs = {}, fake = {}, withCli = true, setup, homeMode = 'absolute', pathPrefix, homeDir }) {
   const root = mkdtempSync(join(tmpdir(), 'act-run-'));
   try {
     const path = `${pathPrefix ? `${pathPrefix}:` : ''}${makeBin(root, { withCli })}`;
-    const home = join(root, 'home');
-    mkdirSync(home);
+    const home = homeDir ?? join(root, 'home');
+    if (!homeDir) mkdirSync(home);
     const work = join(root, 'work');
     mkdirSync(work);
     const fakeLog = join(root, 'fake.log');
@@ -270,17 +277,22 @@ const STEP = {
   install: 'Install Enterprise Skills CLI',
   cli: 'Installed CLI version and evidence gate',
   compat: 'License compatibility (plant the file only for cli < 4.14)',
-  licenseFile: 'License file check (refuse the evidence phase next to a license file)',
   claudeCode: 'Install Claude Code (evidence phase)',
+  licenseFile: 'License file check (refuse the evidence phase next to a license file)',
   agents: 'Evidence phase (semantic agents)',
   rr: 'Evidence phase (full release-readiness workflow)',
   unfunded: 'Evidence phase skipped (unfunded)',
   govern: 'Govern and post the decision (completes the PR check run)',
-  failed: 'Fail the job when the evidence phase failed',
+  failed: 'Fail the job when the evidence phase failed or was refused',
 };
 const FUNDED = { 'anthropic-api-key': PLACEHOLDER, 'license-key': PLACEHOLDER };
 const UNFUNDED = { 'license-key': PLACEHOLDER };
-const EVIDENCE_PATH = ['install', 'cli', 'compat', 'licenseFile', 'claudeCode'];
+const EVIDENCE_PATH = ['install', 'cli', 'compat', 'claudeCode', 'licenseFile'];
+const FINAL_REFUSED = /^error title=Evidence phase refused::The evidence phase was asked for and funded but refused \(the reason and the fix are in the error above\)\. The govern step ran; this step fails the job so the refusal stays visible\.$/;
+const FINAL_INVALID = /^error title=Invalid evidence input::The evidence input must be agents, release-readiness or none \(the value is in the error above\)\. The govern step ran; this step fails the job\.$/;
+const exactly = (text) => new RegExp(`^${text.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}$`);
+const GATE_INVALID = (v) =>
+  exactly(`error title=Invalid evidence input::evidence is ${JSON.stringify(v)}; it must be agents, release-readiness or none. No evidence step runs; the govern step runs and then the job fails. Fix: set evidence to agents, release-readiness or none.`);
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 const planted = JSON.stringify({ key: PLACEHOLDER });
 
@@ -344,28 +356,45 @@ export const CASES = [
     annotations: [],
   },
   {
-    name: 'installed 4.30.2, funded (evidence refused, govern runs)',
+    name: 'installed 4.30.2, funded (evidence refused, govern runs, job fails)',
     inputs: FUNDED,
+    fake: { FAKE_VERSION_OUT: '4.30.2\\n' },
+    ran: ['install', 'cli', 'compat', 'govern', 'failed'],
+    job: 'failure',
+    annotations: [/^error title=Evidence phase refused::enterprise-skills 4\.30\.2 is installed \(installed 4\.30\.2 is older than 4\.31\.0\)\. .*Both evidence steps are skipped; the govern step runs and then the job fails\. Fix: set cli-version to 4\.31\.0 or newer\.$/, FINAL_REFUSED],
+    check: (r) => [[calls(r, 'enterprise-skills').some((c) => c.argv[0] === 'govern'), 'govern ran']],
+  },
+  {
+    name: 'installed 4.30.2, unfunded (nothing refused; green)',
+    inputs: UNFUNDED,
+    fake: { FAKE_VERSION_OUT: '4.30.2\\n' },
+    ran: ['install', 'cli', 'compat', 'unfunded', 'govern'],
+    job: 'success',
+    annotations: [/^notice title=Evidence phase skipped::/],
+  },
+  {
+    name: 'installed 4.30.2, funded, evidence: none (nothing refused; green)',
+    inputs: { ...FUNDED, evidence: 'none' },
     fake: { FAKE_VERSION_OUT: '4.30.2\\n' },
     ran: ['install', 'cli', 'compat', 'govern'],
     job: 'success',
-    annotations: [/^error title=Evidence phase refused::enterprise-skills 4\.30\.2 is installed \(installed 4\.30\.2 is older than 4\.31\.0\)\. .*Both evidence steps are skipped and the job continues to the govern step\. Fix: set cli-version to 4\.31\.0 or newer\.$/],
+    annotations: [],
   },
   {
-    name: 'installed pre-release 4.31.0-rc.1, funded (evidence refused, govern runs)',
+    name: 'installed pre-release 4.31.0-rc.1, funded (evidence refused, govern runs, job fails)',
     inputs: FUNDED,
     fake: { FAKE_VERSION_OUT: '4.31.0-rc.1\\n' },
-    ran: ['install', 'cli', 'compat', 'govern'],
-    job: 'success',
-    annotations: [/^error title=Evidence phase refused::enterprise-skills 4\.31\.0-rc\.1 is installed \(installed 4\.31\.0-rc\.1 is not a plain release\)\. .*Fix: set cli-version to 4\.31\.0 or newer\.$/],
+    ran: ['install', 'cli', 'compat', 'govern', 'failed'],
+    job: 'failure',
+    annotations: [/^error title=Evidence phase refused::enterprise-skills 4\.31\.0-rc\.1 is installed \(installed 4\.31\.0-rc\.1 is not a plain release\)\. .*Fix: set cli-version to 4\.31\.0 or newer\.$/, FINAL_REFUSED],
   },
   {
-    name: 'installed 4.13.0, funded (license file planted, evidence refused, govern runs)',
+    name: 'installed 4.13.0, funded (license file planted, evidence refused, govern runs, job fails)',
     inputs: FUNDED,
     fake: { FAKE_VERSION_OUT: '4.13.0\\n' },
-    ran: ['install', 'cli', 'compat', 'govern'],
-    job: 'success',
-    annotations: [/^error title=Evidence phase refused::enterprise-skills 4\.13\.0 is installed/],
+    ran: ['install', 'cli', 'compat', 'govern', 'failed'],
+    job: 'failure',
+    annotations: [/^error title=Evidence phase refused::enterprise-skills 4\.13\.0 is installed/, FINAL_REFUSED],
     check: (r) => [[r.licenseFile === planted, 'compat step planted the keys-only license file']],
   },
   {
@@ -399,33 +428,61 @@ export const CASES = [
     annotations: [new RegExp(`^error title=Installed CLI version unreadable::\`enterprise-skills --version\` printed ${JSON.stringify(shown).replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}, which is not a version\\. The job stops here`)],
   })),
   {
-    name: 'license file planted before the run (evidence refused, file untouched, govern runs)',
+    name: 'license file planted before the run (evidence refused, file untouched, govern runs, job fails)',
     inputs: FUNDED,
     setup: plant,
-    ran: ['install', 'cli', 'compat', 'licenseFile', 'govern'],
-    job: 'success',
-    annotations: [/^error title=Evidence phase refused::A license file exists at \/\S+\/home\/\.enterprise-skills\/license\.json, which enterprise-skills reads and an agent started by the evidence phase could read\. This step did not change it\. Both evidence steps are skipped and the job continues to the govern step\. Fix: remove whatever writes that file before this action runs/],
+    ran: [...EVIDENCE_PATH, 'govern', 'failed'],
+    job: 'failure',
+    annotations: [/^error title=Evidence phase refused::A license file exists at \/\S+\/home\/\.enterprise-skills\/license\.json, which enterprise-skills reads and an agent started by the evidence phase could read\. This step did not change it\. Both evidence steps are skipped; the govern step runs and then the job fails\. Fix: remove whatever writes that file before the evidence phase/, FINAL_REFUSED],
     check: (r) => [
       [r.licenseFile === planted, `license file content unchanged (sha256 ${r.licenseFile === null ? 'missing' : sha(r.licenseFile)})`],
-      [calls(r, 'npm').length === 1, 'claude-code was not installed'],
       [calls(r, 'enterprise-skills').every((c) => c.argv[0] === 'govern'), 'no evidence command ran'],
+      [calls(r, 'enterprise-skills').some((c) => c.argv[0] === 'govern'), 'govern ran'],
     ],
   },
   {
-    name: 'license directory (not a file) planted before the run (evidence refused)',
+    name: 'license file appears during the Claude Code install (B2: refused, agent never starts, job fails)',
     inputs: FUNDED,
-    setup: ({ home }) => mkdirSync(join(home, '.enterprise-skills', 'license.json'), { recursive: true }),
-    ran: ['install', 'cli', 'compat', 'licenseFile', 'govern'],
-    job: 'success',
-    annotations: [/^error title=Evidence phase refused::A license file exists at /],
+    fake: { FAKE_NPM_CLAUDE_PLANT: '1' },
+    ran: [...EVIDENCE_PATH, 'govern', 'failed'],
+    job: 'failure',
+    annotations: [/^error title=Evidence phase refused::A license file exists at /, FINAL_REFUSED],
+    check: (r) => [
+      [r.ran.find((s) => s.name === STEP.claudeCode)?.outcome === 'success', 'the install succeeded'],
+      [calls(r, 'enterprise-skills').every((c) => c.argv[0] === 'govern') && calls(r, 'claude').length === 0, 'no evidence command and no agent ran'],
+    ],
   },
   {
-    name: 'HOME relative (cannot determine, evidence refused)',
+    name: 'license file planted, unfunded (check does not run; green)',
+    inputs: UNFUNDED,
+    setup: plant,
+    ran: ['install', 'cli', 'compat', 'unfunded', 'govern'],
+    job: 'success',
+    annotations: [/^notice title=Evidence phase skipped::/],
+  },
+  {
+    name: 'license file planted, evidence: none (check does not run; green)',
+    inputs: { ...FUNDED, evidence: 'none' },
+    setup: plant,
+    ran: ['install', 'cli', 'compat', 'govern'],
+    job: 'success',
+    annotations: [],
+  },
+  {
+    name: 'license directory (not a file) planted before the run (evidence refused, job fails)',
+    inputs: FUNDED,
+    setup: ({ home }) => mkdirSync(join(home, '.enterprise-skills', 'license.json'), { recursive: true }),
+    ran: [...EVIDENCE_PATH, 'govern', 'failed'],
+    job: 'failure',
+    annotations: [/^error title=Evidence phase refused::A license file exists at /, FINAL_REFUSED],
+  },
+  {
+    name: 'HOME relative (cannot determine, evidence refused, job fails)',
     inputs: FUNDED,
     homeMode: 'relative',
-    ran: ['install', 'cli', 'compat', 'licenseFile', 'govern'],
-    job: 'success',
-    annotations: [/^error title=Evidence phase refused::Whether a license file exists under the runner's home cannot be determined: USERPROFILE \?\? HOME \(where the CLI reads\) is "home", not an absolute directory; HOME is "home", not an absolute directory; os\.homedir\(\) is "home", not an absolute directory\. Both evidence steps are skipped and the job continues to the govern step\. Fix: run this action with HOME set to the runner user's home directory\.$/],
+    ran: [...EVIDENCE_PATH, 'govern', 'failed'],
+    job: 'failure',
+    annotations: [/^error title=Evidence phase refused::Whether a license file exists under the runner's home cannot be determined: USERPROFILE \?\? HOME \(where the CLI reads\) is "home", not an absolute directory; HOME is "home", not an absolute directory; os\.homedir\(\) is "home", not an absolute directory\. Both evidence steps are skipped; the govern step runs and then the job fails\. Fix: run this action with HOME set to the runner user's home directory\.$/, FINAL_REFUSED],
   },
   {
     name: 'evidence command exits 1 (govern still runs, job fails)',
@@ -459,6 +516,21 @@ export const CASES = [
     ran: [...EVIDENCE_PATH, 'agents', 'govern'],
     job: 'failure',
     annotations: [],
+  },
+  {
+    name: 'evidence: "agent" (invalid), funded (govern runs, job fails)',
+    inputs: { ...FUNDED, evidence: 'agent' },
+    ran: ['install', 'cli', 'compat', 'govern', 'failed'],
+    job: 'failure',
+    annotations: [GATE_INVALID('agent'), FINAL_INVALID],
+    check: (r) => [[calls(r, 'npm').length === 1 && calls(r, 'enterprise-skills').every((c) => c.argv[0] === 'govern'), 'no install, no evidence command']],
+  },
+  {
+    name: 'evidence: "" (invalid), unfunded (govern runs, job fails)',
+    inputs: { ...UNFUNDED, evidence: '' },
+    ran: ['install', 'cli', 'compat', 'unfunded', 'govern', 'failed'],
+    job: 'failure',
+    annotations: [GATE_INVALID(''), /^notice title=Evidence phase skipped::/, FINAL_INVALID],
   },
   {
     name: 'cli-version ^4.31.0 accepted and passed through env',
@@ -523,6 +595,7 @@ export const FIXTURE_BLOBS = {
   'action-0f38775.yml': '70decab1c00996117f939a57f3c345ff1f90dcfe',
   'evidence-gate-0f38775.mjs': '2830067cb222f9e1b4ea5ce241511d32cebda715',
   'action-7a935a0.yml': 'c2b9106d0050c1ffa6870d4e30231d69b3ffd552',
+  'action-6775c1f.yml': '084e65f3258c631cb6ddcd3356593e8b0d71fe1c',
 };
 
 export function gitBlobId(buf) {

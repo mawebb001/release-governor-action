@@ -6,17 +6,24 @@
 //   - Unreadable (the command exits non-zero, or prints something that is not
 //     a version): this script exits 1 with an error, which fails the step and
 //     the job there. No later step runs, the govern step included.
-//   - Readable: the outputs are written and the job continues.
-//       version             the installed version
-//       evidence            agents | release-readiness | none — the evidence
-//                           step that may run (subject to the license-file
-//                           check). Not none only for a plain release >=
-//                           MIN_VERSION, funded, with that mode requested.
-//       plant-license-file  true for a release below 4.14, which reads only
-//                           ~/.enterprise-skills/license.json
+//   - Readable: the outputs are written and this step succeeds.
+//       version               the installed version
+//       evidence              agents | release-readiness | none — the evidence
+//                             step that may run (subject to the Claude Code
+//                             install and the license-file check). Not none
+//                             only for a plain release >= MIN_VERSION, funded,
+//                             with that mode requested.
+//       refused               true when an evidence phase was requested and
+//                             funded but the version refuses it
+//       evidence-input-valid  false when the evidence input is not agents,
+//                             release-readiness or none
+//       plant-license-file    true for a release below 4.14, which reads only
+//                             ~/.enterprise-skills/license.json
 //     A readable version that is older than MIN_VERSION or is not a plain
 //     release (a pre-release, build metadata) refuses the evidence phase, with
-//     an error naming the fix when evidence was requested and funded.
+//     an error naming the fix when evidence was requested and funded. Refused
+//     or invalid: the govern step still runs, then the action's last step
+//     fails the job.
 //
 // Action mode (no arguments) reads:
 //   ES_VERSION_RC   exit status of `enterprise-skills --version`
@@ -109,6 +116,7 @@ function escapeData(s) {
 }
 
 const MODES = new Set(['agents', 'release-readiness']);
+const VALID_MODES = new Set(['agents', 'release-readiness', 'none']);
 
 // Returns the process exit code.
 function actionMode(env) {
@@ -125,11 +133,22 @@ function actionMode(env) {
     return 1;
   }
   const mode = env.EVIDENCE ?? '';
+  const valid = VALID_MODES.has(mode);
   const requested = MODES.has(mode);
   const funded = env.FUNDED === 'true';
   const evidence = result.allowed && requested && funded ? mode : 'none';
+  const refused = requested && funded && !result.allowed;
   if (env.GITHUB_OUTPUT) {
-    appendFileSync(env.GITHUB_OUTPUT, `version=${result.version}\nevidence=${evidence}\nplant-license-file=${result.plantLicenseFile}\n`);
+    appendFileSync(
+      env.GITHUB_OUTPUT,
+      `version=${result.version}\nevidence=${evidence}\nrefused=${refused}\nevidence-input-valid=${valid}\nplant-license-file=${result.plantLicenseFile}\n`,
+    );
+  }
+  if (!valid) {
+    console.log(
+      `::error title=Invalid evidence input::evidence is ${escapeData(JSON.stringify(mode.slice(0, 40)))}; it must be agents, release-readiness or none. ` +
+        'No evidence step runs; the govern step runs and then the job fails. Fix: set evidence to agents, release-readiness or none.',
+    );
   }
   if (result.allowed) {
     console.log(`Installed enterprise-skills ${result.version}: the evidence phase is allowed (${result.reason}).`);
@@ -137,7 +156,7 @@ function actionMode(env) {
     console.log(
       `::error title=Evidence phase refused::enterprise-skills ${escapeData(result.version)} is installed (${escapeData(result.reason)}). ` +
         `The evidence phase needs a plain release >= ${min}: ${min} hands the agent an allowlisted environment and takes the vendor key by name (--pass-env). ` +
-        `Both evidence steps are skipped and the job continues to the govern step. Fix: set cli-version to ${min} or newer.`,
+        `Both evidence steps are skipped; the govern step runs and then the job fails. Fix: set cli-version to ${min} or newer.`,
     );
   } else {
     console.log(`Installed enterprise-skills ${result.version}: the evidence phase is refused (${result.reason}); no evidence phase was requested and funded, so nothing is skipped.`);
