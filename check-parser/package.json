@@ -1,0 +1,8 @@
+{
+  "name": "release-governor-action-check-parser",
+  "private": true,
+  "description": "The YAML parser the action-check workflow reads action.yml with. Installed only by .github/workflows/check.yml (npm ci --ignore-scripts); nothing a consumer's run of the action touches.",
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}

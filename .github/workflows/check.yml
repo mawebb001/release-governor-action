@@ -1,0 +1,249 @@
+name: action-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  action-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      # The real YAML parser the guard compares its own reading with. Used by
+      # this check only; nothing a consumer's run of the action installs.
+      - name: Install the pinned YAML parser (check only)
+        working-directory: check-parser
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Guard action.yml and run the gate and cli-version tables
+        if: ${{ !cancelled() }}
+        run: node scripts/check-action.mjs
+      - name: Confirm the pins against the npm registry
+        if: ${{ !cancelled() }}
+        run: node scripts/check-registry.mjs
+      - name: Run action.yml's steps against fakes (T1)
+        if: ${{ !cancelled() }}
+        run: node scripts/test-action-run.mjs
+      - name: Guard mutants and registry failure paths (T2)
+        if: ${{ !cancelled() }}
+        run: node scripts/test-guard.mjs
+
+  # RL-92: runs THIS action on a GitHub runner against fake binaries
+  # (scripts/runner-proof.mjs). The fakes record argv and env NAMES only; the
+  # inputs are placeholders; the real CLI, the real claude and a real
+  # `govern --post` never run. Green only when every case matched.
+  action-runner-proof:
+    runs-on: ubuntu-latest
+    env:
+      JOB_LEVEL_ENV_PROBE: placeholder-not-a-key
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Put the fake binaries first on PATH
+        run: node scripts/runner-proof.mjs setup
+      - name: "case a (normal funded path): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure a
+      - name: "case a (normal funded path): run the action"
+        id: case-a
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case a (normal funded path): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-a.outcome }}
+        run: node scripts/runner-proof.mjs check a
+      - name: "case b (an evidence step exits 1): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure b
+      - name: "case b (an evidence step exits 1): run the action"
+        id: case-b
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case b (an evidence step exits 1): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-b.outcome }}
+        run: node scripts/runner-proof.mjs check b
+      - name: "case c (the claude-code install exits 1): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure c
+      - name: "case c (the claude-code install exits 1): run the action"
+        id: case-c
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case c (the claude-code install exits 1): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-c.outcome }}
+        run: node scripts/runner-proof.mjs check c
+      - name: "case d (enterprise-skills --version exits 42): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure d
+      - name: "case d (enterprise-skills --version exits 42): run the action"
+        id: case-d
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case d (enterprise-skills --version exits 42): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-d.outcome }}
+        run: node scripts/runner-proof.mjs check d
+      - name: "case e1 (installed 4.30.2, funded): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure e1
+      - name: "case e1 (installed 4.30.2, funded): run the action"
+        id: case-e1
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case e1 (installed 4.30.2, funded): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-e1.outcome }}
+        run: node scripts/runner-proof.mjs check e1
+      - name: "case e2 (installed 4.31.0-rc.1, funded): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure e2
+      - name: "case e2 (installed 4.31.0-rc.1, funded): run the action"
+        id: case-e2
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case e2 (installed 4.31.0-rc.1, funded): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-e2.outcome }}
+        run: node scripts/runner-proof.mjs check e2
+      - name: "case e3 (license file in the runner home): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure e3
+      - name: "case e3 (license file in the runner home): run the action"
+        id: case-e3
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case e3 (license file in the runner home): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-e3.outcome }}
+        run: node scripts/runner-proof.mjs check e3
+      - name: "case e4 (license file written during the claude-code install): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure e4
+      - name: "case e4 (license file written during the claude-code install): run the action"
+        id: case-e4
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+      - name: "case e4 (license file written during the claude-code install): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-e4.outcome }}
+        run: node scripts/runner-proof.mjs check e4
+      - name: "case e5 (evidence input agent, funded): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure e5
+      - name: "case e5 (evidence input agent, funded): run the action"
+        id: case-e5
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+          evidence: agent
+      - name: "case e5 (evidence input agent, funded): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-e5.outcome }}
+        run: node scripts/runner-proof.mjs check e5
+      - name: "case e6 (evidence input agent, unfunded): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure e6
+      - name: "case e6 (evidence input agent, unfunded): run the action"
+        id: case-e6
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          evidence: agent
+      - name: "case e6 (evidence input agent, unfunded): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-e6.outcome }}
+        run: node scripts/runner-proof.mjs check e6
+      - name: "case f (unfunded): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure f
+      - name: "case f (unfunded): run the action"
+        id: case-f
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+      - name: "case f (unfunded): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-f.outcome }}
+        run: node scripts/runner-proof.mjs check f
+      - name: "case g (funded, evidence none): configure"
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs configure g
+      - name: "case g (funded, evidence none): run the action"
+        id: case-g
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: ./
+        with:
+          license-key: placeholder-not-a-key
+          anthropic-api-key: placeholder-not-a-key
+          evidence: none
+      - name: "case g (funded, evidence none): check"
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.case-g.outcome }}
+        run: node scripts/runner-proof.mjs check g
+      - name: Verdict (every case matched)
+        if: ${{ !cancelled() }}
+        run: node scripts/runner-proof.mjs verdict
